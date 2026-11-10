@@ -16,8 +16,18 @@ Every playbook runs in this project's GitLab pipeline; the variables (keys, pass
 ## Naming
 
 Every application exists twice on the server, `<app>-staging` and `<app>-production`. The same name is used for the
-systemd unit, the database and role (`_` instead of `-`), `/srv/<app>/<env>/`, `/etc/examples/<app>-<env>.env`
-and the host name `<app>-<env>.examples.maresdemo.com`. Backends listen on `127.0.0.1` only.
+systemd unit, the database and role (`_` instead of `-`), the directories and the host name
+`<app>-<env>.examples.maresdemo.com`. Backends listen on `127.0.0.1` only.
+
+| Path | Holds | SELinux type |
+|------|-------|--------------|
+| `/etc/examples/<app>-<env>.env` | configuration and secrets (written by Ansible) | `etc_t` |
+| `/srv/<app>/<env>/releases/<id>`, `current` | JAR and PHP releases (written by the pipeline) | `var_t`, `httpd_sys_content_t` for PHP |
+| `/var/lib/examples/<app>/<env>/image.env` | the image a container unit runs (written by the pipeline) | `var_lib_t` |
+
+The image pointer is not under `/srv` on purpose: systemd (PID 1, `init_t`) reads `EnvironmentFile=` and the policy allows
+that for `etc_t` and `var_lib_t` but not for `var_t`, which is what `/srv` is labelled with. The unit then fails with
+"Failed to load environment files: Permission denied" and no AVC record (a `dontaudit` rule hides it).
 
 | Application | Kind | Staging / production port |
 |-------------|------|---------------------------|

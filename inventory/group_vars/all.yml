@@ -12,6 +12,9 @@ examples_domain: "{{ lookup('ansible.builtin.env', 'EXAMPLES_DOMAIN') | default(
 letsencrypt_staging: "{{ (lookup('ansible.builtin.env', 'LETSENCRYPT_STAGING') | default('false', true)) | bool }}"
 
 ssh_port: "{{ lookup('ansible.builtin.env', 'DEPLOY_SSH_PORT') | default(6022, true) }}"
+# State that a pipeline writes and systemd reads (the image a container unit runs). It must not live under /srv:
+# systemd (init_t) may read etc_t and var_lib_t files but not var_t, which is what /srv is labelled with.
+state_dir: /var/lib/examples
 deploy_public_key: "{{ lookup('ansible.builtin.env', 'DEPLOY_PUBLIC_KEY') }}"
 
 # Which environments this run configures: staging, production or all.

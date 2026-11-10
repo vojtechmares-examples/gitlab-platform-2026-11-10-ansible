@@ -3,10 +3,10 @@
 Description={{ unit }} (container)
 After=docker.service network-online.target
 Requires=docker.service
-ConditionPathExists=/srv/{{ app_name }}/{{ env_name }}/image.env
+ConditionPathExists={{ state_dir }}/{{ app_name }}/{{ env_name }}/image.env
 
 [Service]
-EnvironmentFile=/srv/{{ app_name }}/{{ env_name }}/image.env
+EnvironmentFile={{ state_dir }}/{{ app_name }}/{{ env_name }}/image.env
 ExecStartPre=-/usr/bin/docker rm -f {{ unit }}
 ExecStart=/usr/bin/docker run --rm --name {{ unit }} \
   --publish 127.0.0.1:{{ port }}:{{ app.container_port }} \

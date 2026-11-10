@@ -21,7 +21,8 @@ ENVS=(staging production)
 : "${SECRETS_FILE:?path of the secrets file (created when it does not exist)}"
 
 export GITLAB_HOST="${HOST}"   # glab reads GITLAB_HOST; be explicit so it never talks to another instance
-set_var() { glab variable set "$@" --repo "${HOST}/${PROJECT}" >/dev/null; }
+# "glab variable set" creates and fails when the variable exists; "update" changes only what it is given. Try both.
+set_var() { glab variable set "$@" --repo "${HOST}/${PROJECT}" >/dev/null 2>&1 || glab variable update "$@" --repo "${HOST}/${PROJECT}" >/dev/null; }
 
 if [ ! -f "${SECRETS_FILE}" ]; then
   umask 077

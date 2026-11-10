@@ -33,14 +33,46 @@
   args:
     creates: /var/lib/systemd/linger/svc-dotnet
 
-- name: Directories for the applications of the active environments
+- name: Directories for the JAR and PHP applications of the active environments (/srv)
   ansible.builtin.file:
     path: "/srv/{{ item.0.key }}/{{ item.1 }}"
     state: directory
     owner: deploy
-    group: "{{ item.0.value.run_as if item.0.value.run_as != 'root' else 'deploy' }}"
+    group: "{{ item.0.value.run_as }}"
     mode: "0755"
-  loop: "{{ apps | dict2items | rejectattr('value.kind', 'equalto', 'quadlet') | product(active_envs) | list }}"
+  loop: "{{ apps | dict2items | selectattr('value.kind', 'in', ['jar', 'php']) | product(active_envs) | list }}"
+  loop_control:
+    label: "{{ item.0.key }}/{{ item.1 }}"
+
+- name: State directory of the container applications (var_lib_t, readable by systemd)
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ state_dir }}"
+
+- name: Per-application state directories, written by the deploy user (the image to run)
+  ansible.builtin.file:
+    path: "{{ state_dir }}/{{ item.0.key }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ apps | dict2items | selectattr('value.kind', 'equalto', 'docker') | product(active_envs) | list }}"
+  loop_control:
+    label: "{{ item.0.key }}"
+
+- name: Per-environment state directories of the container applications
+  ansible.builtin.file:
+    path: "{{ state_dir }}/{{ item.0.key }}/{{ item.1 }}"
+    state: directory
+    owner: deploy
+    group: deploy
+    mode: "0755"
+  loop: "{{ apps | dict2items | selectattr('value.kind', 'equalto', 'docker') | product(active_envs) | list }}"
   loop_control:
     label: "{{ item.0.key }}/{{ item.1 }}"
 
