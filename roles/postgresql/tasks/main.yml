@@ -1,0 +1,64 @@
+---
+# A packaged PostgreSQL (AppStream, systemd, SELinux policy included) was chosen over a container: one
+# database server for many small applications, upgraded with dnf, backed up with the host.
+- name: PostgreSQL server
+  ansible.builtin.dnf:
+    name: "{{ postgresql_package }}"
+    state: present
+
+- name: Initialise the cluster once
+  ansible.builtin.command: postgresql-setup --initdb
+  args:
+    creates: /var/lib/pgsql/data/PG_VERSION
+
+- name: Listen on all addresses (the Hetzner firewall does not open 5432; pg_hba below limits who may log in)
+  ansible.builtin.lineinfile:
+    path: /var/lib/pgsql/data/postgresql.conf
+    regexp: '^#?listen_addresses\s*='
+    line: "listen_addresses = '*'"
+  notify: restart postgresql
+
+- name: Store passwords as scram-sha-256
+  ansible.builtin.lineinfile:
+    path: /var/lib/pgsql/data/postgresql.conf
+    regexp: '^#?password_encryption\s*='
+    line: "password_encryption = scram-sha-256"
+  notify: restart postgresql
+
+- name: Client authentication
+  ansible.builtin.template:
+    src: pg_hba.conf.j2
+    dest: /var/lib/pgsql/data/pg_hba.conf
+    owner: postgres
+    group: postgres
+    mode: "0600"
+  notify: reload postgresql
+
+- name: PostgreSQL is enabled and running
+  ansible.builtin.systemd_service:
+    name: postgresql
+    enabled: true
+    state: started
+
+- name: Flush handlers so the settings are active before the roles and databases are created
+  ansible.builtin.meta: flush_handlers
+
+- name: "Role per application and environment"
+  community.postgresql.postgresql_user:
+    name: "{{ item.0.key | replace('-', '_') }}_{{ item.1 }}"
+    password: "{{ lookup('ansible.builtin.env', 'DB_PASSWORD_' ~ (item.0.key | upper | replace('-', '_'))) }}"
+    encrypted: true
+  become_user: postgres
+  no_log: true
+  loop: "{{ apps | dict2items | selectattr('value.database') | product(active_envs) | list }}"
+  loop_control:
+    label: "{{ item.0.key }}_{{ item.1 }}"
+
+- name: "Database per application and environment"
+  community.postgresql.postgresql_db:
+    name: "{{ item.0.key | replace('-', '_') }}_{{ item.1 }}"
+    owner: "{{ item.0.key | replace('-', '_') }}_{{ item.1 }}"
+  become_user: postgres
+  loop: "{{ apps | dict2items | selectattr('value.database') | product(active_envs) | list }}"
+  loop_control:
+    label: "{{ item.0.key }}_{{ item.1 }}"

@@ -1,0 +1,9 @@
+---
+# Per application and environment: configuration files with the secrets, systemd units and the Apache instances.
+# The application pipelines deliver the artifacts and restart these units.
+#   ansible-playbook playbooks/apps.yml --limit staging
+- name: Application units and configuration
+  hosts: deploy_servers
+  become: true
+  roles:
+    - apps

@@ -1,0 +1,36 @@
+# Managed by Ansible: roles/caddy. Every site gets a Let's Encrypt certificate automatically (HTTP-01 on
+# port 80, HTTP to HTTPS redirect included). The backends listen on 127.0.0.1 only.
+{
+	# The ACME directory is set explicitly: it is the only CA that the domain's CAA records allow.
+{% if letsencrypt_staging %}
+	acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+{% else %}
+	acme_ca https://acme-v02.api.letsencrypt.org/directory
+{% endif %}
+}
+
+{% for name, app in apps.items() %}
+{% for env in app_environments %}
+{{ name }}-{{ env }}.{{ examples_domain }} {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:{{ app.ports[env] }}
+
+	# The upstream is down (stopped for a deployment, restarting): show the static maintenance page
+	handle_errors {
+		@maintenance expression {err.status_code} in [502, 503, 504]
+		handle @maintenance {
+			root * /srv/caddy/maintenance
+			rewrite * /maintenance.html
+			header Cache-Control "no-store"
+			header Retry-After "60"
+			file_server {
+				status 503
+			}
+		}
+	}
+
+	log
+}
+
+{% endfor %}
+{% endfor %}

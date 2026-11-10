@@ -1,0 +1,52 @@
+---
+- name: Find the Rocky repository files on the host
+  ansible.builtin.find:
+    paths: /etc/yum.repos.d
+    patterns: "rocky*.repo"
+  register: rocky_repo_files
+
+- name: Pin the Rocky repositories to dl.rockylinux.org
+  ansible.builtin.replace:
+    path: "{{ item.path }}"
+    regexp: '^mirrorlist=.*[?&]repo=([A-Za-z]+)-\$releasever\$rltype$'
+    replace: 'baseurl=https://dl.rockylinux.org/pub/rocky/$releasever/\1/$basearch/os/'
+  loop: "{{ rocky_repo_files.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Make dnf fail fast on a stalled mirror instead of hanging
+  community.general.ini_file:
+    path: /etc/dnf/dnf.conf
+    section: main
+    option: "{{ item.option }}"
+    value: "{{ item.value }}"
+    mode: "0644"
+  loop:
+    - { option: timeout, value: "30" }
+    - { option: retries, value: "5" }
+    - { option: max_parallel_downloads, value: "5" }
+
+- name: Install the common packages
+  ansible.builtin.dnf:
+    name: "{{ common_packages }}"
+    state: present
+  tags: [packages]
+
+- name: SELinux stays enforcing (this server mirrors a Red Hat production host)
+  ansible.posix.selinux:
+    policy: targeted
+    state: enforcing
+
+- name: Time synchronisation
+  ansible.builtin.systemd_service:
+    name: chronyd
+    enabled: true
+    state: started
+
+- name: Directory for the configuration files of the example applications
+  ansible.builtin.file:
+    path: /etc/examples
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"

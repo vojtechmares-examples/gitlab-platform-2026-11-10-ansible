@@ -1,0 +1,9 @@
+---
+# Caddy: automatic HTTPS in front of every application and environment, plus the maintenance page.
+#   ansible-playbook playbooks/caddy.yml --limit staging
+#   LETSENCRYPT_STAGING=true ansible-playbook playbooks/caddy.yml --limit staging   # test CA, no rate limits
+- name: Caddy
+  hosts: deploy_servers
+  become: true
+  roles:
+    - caddy

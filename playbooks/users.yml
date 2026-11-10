@@ -1,0 +1,9 @@
+---
+# The accounts the applications run as (svc-java, svc-php, svc-dotnet), the deploy account's rights and
+# the per-application directories.
+#   ansible-playbook playbooks/users.yml --limit staging
+- name: Application accounts and directories
+  hosts: deploy_servers
+  become: true
+  roles:
+    - service_users

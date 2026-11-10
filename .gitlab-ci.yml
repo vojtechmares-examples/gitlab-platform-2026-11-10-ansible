@@ -1,0 +1,118 @@
+# Configuration management of the deploy server, run from a pipeline.
+#   lint        every pipeline, no secrets needed
+#   staging     main: dry run, then apply (environment "staging")
+#   production  main: apply, manual, protected environment (deployment approval)
+#   maintenance manual or scheduled: all updates incl. the kernel, reboot when needed
+# Variables (set with scripts/set-ci-variables.sh, i.e. with glab):
+#   ANSIBLE_SSH_PRIVATE_KEY (File, protected)  DB_PASSWORD_<APP> (masked, protected, scoped per environment)
+#   EXAMPLES_DOMAIN, DEPLOY_PUBLIC_KEY
+# From the instance: DEPLOY_HOST, DEPLOY_SSH_PORT, SSH_KNOWN_HOSTS
+
+include:
+  - project: examples/ci-templates
+    ref: main
+    file: /rocky.yml
+
+stages: [lint, staging, production, maintenance]
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+variables:
+  # The docker executor checks out with a world-writable umask, and Ansible refuses to read ansible.cfg from a
+  # world-writable directory unless told where it is.
+  ANSIBLE_CONFIG: "$CI_PROJECT_DIR/ansible.cfg"
+  ANSIBLE_FORCE_COLOR: "true"
+  ANSIBLE_COLLECTIONS_PATH: "$CI_PROJECT_DIR/.collections"
+  ANSIBLE_HOST_KEY_CHECKING: "true"
+  LETSENCRYPT_STAGING: "false"
+
+# The runner's default image is Rocky Linux; ansible-core comes from Rocky's AppStream.
+.ansible:
+  image: rockylinux/rockylinux:10
+  before_script:
+    - !reference [.rocky-dnf, before_script]
+    - dnf -y -q install ansible-core openssh-clients git
+    - ansible --version | head -1
+    - ansible-galaxy collection install -r requirements.yml -p "$ANSIBLE_COLLECTIONS_PATH"
+  cache:
+    key: ansible-collections
+    paths: [.collections/]
+
+.ansible-ssh:
+  extends: .ansible
+  before_script:
+    - !reference [.ansible, before_script]
+    - install -m 700 -d ~/.ssh
+    - printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+    - chmod 600 "$ANSIBLE_SSH_PRIVATE_KEY"
+    - export ANSIBLE_PRIVATE_KEY_FILE="$ANSIBLE_SSH_PRIVATE_KEY"
+
+syntax:
+  extends: .ansible
+  stage: lint
+  script:
+    - ansible-playbook playbooks/site.yml --syntax-check
+    - ansible-playbook playbooks/maintenance.yml --syntax-check
+
+dry-run:staging:
+  extends: .ansible-ssh
+  stage: staging
+  environment:
+    name: staging
+    action: prepare
+  script:
+    - ansible-playbook playbooks/site.yml --limit staging --check --diff
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+deploy:staging:
+  extends: .ansible-ssh
+  stage: staging
+  needs: ["syntax", "dry-run:staging"]
+  environment:
+    name: staging
+    url: https://dotnet-api-staging.$EXAMPLES_DOMAIN
+  script:
+    - ansible-playbook playbooks/site.yml --limit staging --diff
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+deploy:production:
+  extends: .ansible-ssh
+  stage: production
+  needs: ["deploy:staging"]
+  environment:
+    name: production
+    url: https://dotnet-api-production.$EXAMPLES_DOMAIN
+  script:
+    - ansible-playbook playbooks/site.yml --limit production --diff
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+
+# Kernel and package updates. Run by hand, or from a pipeline schedule (variable UPDATE_ALL=true).
+maintenance:updates:
+  extends: .ansible-ssh
+  stage: maintenance
+  needs: []
+  environment:
+    name: production
+    action: access
+  script:
+    - ansible-playbook playbooks/maintenance.yml --limit production -e update_all=true --diff
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $UPDATE_ALL == "true"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true

@@ -1,0 +1,85 @@
+---
+# ---- versions ("install X in version x") -------------------------------------------------------------
+java_version: 21                       # java-<n>-openjdk-headless from Rocky AppStream (21 and 25 exist)
+dotnet_versions: ["9.0", "10.0"]       # dotnet-sdk-<v> from Rocky AppStream; the SDK includes the runtimes
+php_version: "8.5"                     # Remi repository, enterprise/10/php<NN>
+postgresql_package: postgresql-server  # AppStream: PostgreSQL 16
+
+# ---- the server ----------------------------------------------------------------------------------------
+examples_domain: "{{ lookup('ansible.builtin.env', 'EXAMPLES_DOMAIN') | default('examples.maresdemo.com', true) }}"
+# While a new setup is being tried out, point Caddy at the Let's Encrypt staging CA (not browser-trusted, but
+# without the strict production rate limits). "false" gives real certificates.
+letsencrypt_staging: "{{ (lookup('ansible.builtin.env', 'LETSENCRYPT_STAGING') | default('false', true)) | bool }}"
+
+ssh_port: "{{ lookup('ansible.builtin.env', 'DEPLOY_SSH_PORT') | default(6022, true) }}"
+deploy_public_key: "{{ lookup('ansible.builtin.env', 'DEPLOY_PUBLIC_KEY') }}"
+
+# Which environments this run configures: staging, production or all.
+app_environments: [staging, production]
+active_envs: "{{ app_environments if (target_env | default('all')) == 'all' else [target_env] }}"
+
+# ---- maintenance ---------------------------------------------------------------------------------------
+common_packages:
+  - ca-certificates
+  - chrony
+  - curl
+  - htop
+  - jq
+  - rsync
+  - tar
+  - unzip
+  - vim-enhanced
+  - policycoreutils-python-utils
+  - dnf-utils
+  - python3-libselinux
+  - python3-psycopg2
+  - tmux
+  - bind-utils
+  - lsof
+  - traceroute
+
+# ---- accounts the applications run as -------------------------------------------------------------------
+# svc-java:   Spring Boot JARs (systemd) and the Java containers' files
+# svc-php:    Apache + PHP
+# svc-dotnet: rootless Podman (Quadlet) and the .NET containers' files
+service_users:
+  - { name: svc-java, comment: "Java applications", login: false }
+  - { name: svc-php, comment: "PHP applications (Apache)", login: false }
+  # Rootless Podman needs a real login session (systemctl --user): the pipeline connects as this user.
+  - { name: svc-dotnet, comment: ".NET applications (rootless Podman, Quadlet)", login: true }
+
+# ---- the applications --------------------------------------------------------------------------------
+# kind:  docker  - systemd unit that runs "docker run" (image from the GitLab registry, set by the pipeline)
+#        jar     - systemd unit that runs a Spring Boot JAR; releases/<pipeline id>, "current" symlink
+#        php     - own Apache instance per environment (httpd) with a release directory per pipeline
+#        quadlet - rootless Podman Quadlet owned by svc-dotnet, files delivered by the deploy repository
+# Host names are <app>-<env>.<examples_domain>; every backend listens on 127.0.0.1 only, Caddy is the front door.
+# The environment variables of each application are in roles/apps/templates/env/<app>.j2.
+apps:
+  dotnet-api:
+    kind: docker
+    run_as: root
+    ports: { staging: 5101, production: 5102 }
+    container_port: 8080
+    database: true
+  dotnet-vendor:
+    kind: quadlet
+    run_as: svc-dotnet
+    ports: { staging: 5111, production: 5112 }
+    database: false
+  java-systemd:
+    kind: jar
+    run_as: svc-java
+    ports: { staging: 5121, production: 5122 }
+    database: true
+  java-container:
+    kind: docker
+    run_as: root
+    ports: { staging: 5131, production: 5132 }
+    container_port: 8080
+    database: true
+  php-apache:
+    kind: php
+    run_as: svc-php
+    ports: { staging: 5141, production: 5142 }
+    database: false

@@ -1,0 +1,54 @@
+---
+# Per application and environment: configuration file with the secrets, systemd unit, and (PHP) the Apache
+# instance. The application pipelines only deliver files and restart these units.
+- name: "Docker applications: configuration, unit"
+  ansible.builtin.include_tasks: docker.yml
+  vars:
+    app_name: "{{ item.0.key }}"
+    app: "{{ item.0.value }}"
+    env_name: "{{ item.1 }}"
+  loop: "{{ apps | dict2items | selectattr('value.kind', 'equalto', 'docker') | product(active_envs) | list }}"
+  loop_control:
+    label: "{{ item.0.key }}-{{ item.1 }}"
+
+- name: "JAR applications: configuration, unit"
+  ansible.builtin.include_tasks: jar.yml
+  vars:
+    app_name: "{{ item.0.key }}"
+    app: "{{ item.0.value }}"
+    env_name: "{{ item.1 }}"
+  loop: "{{ apps | dict2items | selectattr('value.kind', 'equalto', 'jar') | product(active_envs) | list }}"
+  loop_control:
+    label: "{{ item.0.key }}-{{ item.1 }}"
+
+- name: "PHP applications: Apache instance, unit"
+  ansible.builtin.include_tasks: php.yml
+  vars:
+    app_name: "{{ item.0.key }}"
+    app: "{{ item.0.value }}"
+    env_name: "{{ item.1 }}"
+  loop: "{{ apps | dict2items | selectattr('value.kind', 'equalto', 'php') | product(active_envs) | list }}"
+  loop_control:
+    label: "{{ item.0.key }}-{{ item.1 }}"
+
+- name: "Quadlet applications: the directory the deploy repository writes the .container files to"
+  ansible.builtin.file:
+    path: "/home/svc-dotnet/.config/containers/systemd"
+    state: directory
+    owner: svc-dotnet
+    group: svc-dotnet
+    mode: "0755"
+    recurse: false
+  tags: [quadlet]
+
+- name: "Quadlet applications: parent directories keep the right owner"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: svc-dotnet
+    group: svc-dotnet
+    mode: "0755"
+  loop:
+    - /home/svc-dotnet/.config
+    - /home/svc-dotnet/.config/containers
+  tags: [quadlet]

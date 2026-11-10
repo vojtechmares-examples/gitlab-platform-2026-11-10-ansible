@@ -1,0 +1,10 @@
+---
+# Everything, in order. Each playbook also runs on its own.
+#   ansible-playbook playbooks/site.yml --limit staging        # platform + the staging resources
+#   ansible-playbook playbooks/site.yml --limit production     # platform (no change) + the production resources
+- import_playbook: maintenance.yml
+- import_playbook: runtimes.yml
+- import_playbook: users.yml
+- import_playbook: postgresql.yml
+- import_playbook: caddy.yml
+- import_playbook: apps.yml

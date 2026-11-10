@@ -1,0 +1,41 @@
+---
+- name: Names for this application and environment
+  ansible.builtin.set_fact:
+    unit: "{{ app_name }}-{{ env_name }}"
+    port: "{{ app.ports[env_name] }}"
+    db_name: "{{ app_name | replace('-', '_') }}_{{ env_name }}"
+    db_password: "{{ lookup('ansible.builtin.env', 'DB_PASSWORD_' ~ (app_name | upper | replace('-', '_'))) }}"
+  no_log: true
+
+- name: "{{ unit }}: configuration file (secrets stay out of the unit and the repository)"
+  ansible.builtin.template:
+    src: app.env.j2
+    dest: "/etc/examples/{{ unit }}.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  register: config_changed
+
+- name: "{{ unit }}: systemd unit that runs the container"
+  ansible.builtin.template:
+    src: docker-app.service.j2
+    dest: "/etc/systemd/system/{{ unit }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  register: unit_changed
+
+- name: Reload systemd when a unit file changed
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: unit_changed is changed
+
+- name: "{{ unit }}: enabled at boot (the pipeline starts it with the first image)"
+  ansible.builtin.systemd_service:
+    name: "{{ unit }}"
+    enabled: true
+
+- name: "{{ unit }}: restart a running instance when its configuration changed (a stopped one is left to the pipeline)"
+  ansible.builtin.shell: "systemctl is-active --quiet {{ unit }} && systemctl restart {{ unit }} || true"
+  when: config_changed is changed or unit_changed is changed

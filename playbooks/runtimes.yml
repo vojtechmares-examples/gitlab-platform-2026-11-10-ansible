@@ -1,0 +1,9 @@
+---
+# Install the runtimes the applications need, in the versions set in inventory/group_vars/all.yml:
+# Docker, Podman, Java (java_version), .NET (dotnet_versions) and PHP with Apache (php_version).
+#   ansible-playbook playbooks/runtimes.yml --limit staging -e java_version=25 --tags java
+- name: Container, Java, .NET and PHP runtimes
+  hosts: deploy_servers
+  become: true
+  roles:
+    - runtimes

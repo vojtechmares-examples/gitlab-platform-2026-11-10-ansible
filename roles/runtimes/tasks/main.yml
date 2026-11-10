@@ -1,0 +1,123 @@
+---
+# ---- containers -----------------------------------------------------------------------------------------
+- name: Podman (rootless Quadlet runtime) and the pieces it needs
+  ansible.builtin.dnf:
+    name:
+      - podman
+      - container-selinux
+      - passt
+      - shadow-utils
+    state: present
+  tags: [podman]
+
+- name: Docker CE repository (Docker's RHEL repository; $releasever is 10 on Rocky 10)
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/rhel/docker-ce.repo
+    dest: /etc/yum.repos.d/docker-ce.repo
+    mode: "0644"
+  tags: [docker]
+
+- name: Docker Engine, CLI, buildx and compose
+  ansible.builtin.dnf:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+  tags: [docker]
+
+- name: Docker is enabled and running
+  ansible.builtin.systemd_service:
+    name: docker
+    enabled: true
+    state: started
+  tags: [docker]
+
+# ---- Java -----------------------------------------------------------------------------------------------
+- name: "OpenJDK {{ java_version }} (headless is enough for servers)"
+  ansible.builtin.dnf:
+    name: "java-{{ java_version }}-openjdk-headless"
+    state: present
+  tags: [java]
+
+# ---- .NET -----------------------------------------------------------------------------------------------
+- name: ".NET SDKs {{ dotnet_versions | join(', ') }} (include the ASP.NET Core and .NET runtimes)"
+  ansible.builtin.dnf:
+    name: "{{ dotnet_versions | map('regex_replace', '^(.*)$', 'dotnet-sdk-\\1') | list }}"
+    state: present
+  tags: [dotnet]
+
+# ---- PHP ------------------------------------------------------------------------------------------------
+- name: EPEL and CRB (dependencies of the Remi packages)
+  ansible.builtin.dnf:
+    name: epel-release
+    state: present
+  tags: [php]
+
+- name: Enable the CRB repository
+  community.general.dnf_config_manager:
+    name: crb
+    state: enabled
+  tags: [php]
+
+- name: Remi repository (PHP builds for Enterprise Linux)
+  ansible.builtin.dnf:
+    name: https://rpms.remirepo.net/enterprise/remi-release-10.rpm
+    state: present
+    disable_gpg_check: true # bootstraps the repository; the packages from it are signature-checked
+  tags: [php]
+
+- name: "Module stream php:remi-{{ php_version }}"
+  ansible.builtin.command: "dnf -y module enable php:remi-{{ php_version }}"
+  register: php_module
+  changed_when: "'Enabling module streams' in php_module.stdout"
+  tags: [php]
+
+- name: "PHP {{ php_version }} for Apache (mod_php) with the extensions a Composer application usually needs"
+  ansible.builtin.dnf:
+    name:
+      - php
+      - php-cli
+      - php-common
+      - php-mbstring
+      - php-xml
+      - php-intl
+      - php-pdo
+      - php-pgsql
+      - php-sodium
+    state: present
+  tags: [php]
+
+- name: Apache httpd (instances are defined per application)
+  ansible.builtin.dnf:
+    name: httpd
+    state: present
+  tags: [php]
+
+- name: The stock httpd.service stays off; the applications run their own instances
+  ansible.builtin.systemd_service:
+    name: httpd
+    enabled: false
+    state: stopped
+  tags: [php]
+
+- name: Show the installed versions
+  ansible.builtin.shell: |
+    set -o pipefail
+    docker --version
+    podman --version
+    java -version 2>&1 | head -1
+    dotnet --list-sdks
+    php -v | head -1
+  args:
+    executable: /bin/bash
+  register: versions
+  changed_when: false
+  tags: [always]
+
+- name: Versions
+  ansible.builtin.debug:
+    var: versions.stdout_lines
+  tags: [always]

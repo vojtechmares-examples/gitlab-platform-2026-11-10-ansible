@@ -1,0 +1,6 @@
+# Managed by Ansible. The application pipelines log in as "deploy" and may only manage these units.
+{% for name, app in apps.items() if app.kind in ['docker', 'jar', 'php'] %}
+{% for env in app_environments %}
+deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart {{ name }}-{{ env }}, /usr/bin/systemctl start {{ name }}-{{ env }}, /usr/bin/systemctl stop {{ name }}-{{ env }}, /usr/bin/systemctl is-active {{ name }}-{{ env }}
+{% endfor %}
+{% endfor %}

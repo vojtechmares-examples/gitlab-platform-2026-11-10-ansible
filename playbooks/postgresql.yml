@@ -1,0 +1,9 @@
+---
+# PostgreSQL server plus one role and database per application and environment.
+# Passwords come from the environment (CI/CD variables DB_PASSWORD_<APP>, scoped per environment).
+#   ansible-playbook playbooks/postgresql.yml --limit staging
+- name: PostgreSQL
+  hosts: deploy_servers
+  become: true
+  roles:
+    - postgresql

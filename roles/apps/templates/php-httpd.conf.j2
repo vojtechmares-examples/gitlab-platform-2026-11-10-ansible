@@ -1,0 +1,41 @@
+# Managed by Ansible: roles/apps. Apache with mod_php, listening on loopback only (Caddy terminates TLS).
+ServerRoot "/etc/httpd"
+PidFile /run/httpd/{{ unit }}.pid
+Listen 127.0.0.1:{{ port }}
+ServerName {{ unit }}.{{ examples_domain }}
+ServerTokens Prod
+ServerSignature Off
+
+LoadModule mpm_prefork_module modules/mod_mpm_prefork.so
+LoadModule unixd_module modules/mod_unixd.so
+LoadModule authz_core_module modules/mod_authz_core.so
+LoadModule mime_module modules/mod_mime.so
+LoadModule dir_module modules/mod_dir.so
+LoadModule log_config_module modules/mod_log_config.so
+LoadModule env_module modules/mod_env.so
+LoadModule headers_module modules/mod_headers.so
+LoadModule rewrite_module modules/mod_rewrite.so
+LoadModule alias_module modules/mod_alias.so
+LoadModule setenvif_module modules/mod_setenvif.so
+LoadModule php_module modules/libphp.so
+
+User {{ app.run_as }}
+Group {{ app.run_as }}
+
+TypesConfig /etc/mime.types
+SetEnv APP_ENV {{ env_name }}
+
+DocumentRoot "/srv/{{ app_name }}/{{ env_name }}/current/public"
+<Directory "/srv/{{ app_name }}/{{ env_name }}/current/public">
+    Options -Indexes +FollowSymLinks
+    AllowOverride All
+    Require all granted
+    DirectoryIndex index.php
+</Directory>
+<FilesMatch "\.php$">
+    SetHandler application/x-httpd-php
+</FilesMatch>
+
+ErrorLog /var/log/httpd/{{ unit }}-error.log
+LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combined
+CustomLog /var/log/httpd/{{ unit }}-access.log combined

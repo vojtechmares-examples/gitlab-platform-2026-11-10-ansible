@@ -1,0 +1,65 @@
+---
+- name: The docker group exists before anybody is added to it
+  ansible.builtin.group:
+    name: docker
+    system: true
+
+- name: The accounts the applications run as
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    comment: "{{ item.comment }}"
+    shell: "{{ '/bin/bash' if item.login else '/sbin/nologin' }}"
+    create_home: true
+    password_lock: true
+  loop: "{{ service_users }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: The pipeline user can use the docker CLI (equivalent to root on this host, see the README)
+  ansible.builtin.user:
+    name: deploy
+    groups: docker
+    append: true
+
+- name: The pipelines reach the rootless Podman account with the deploy key
+  ansible.posix.authorized_key:
+    user: svc-dotnet
+    key: "{{ deploy_public_key }}"
+    state: present
+  when: deploy_public_key | length > 0
+
+- name: Rootless Podman units must keep running without a login session (linger)
+  ansible.builtin.command: loginctl enable-linger svc-dotnet
+  args:
+    creates: /var/lib/systemd/linger/svc-dotnet
+
+- name: Directories for the applications of the active environments
+  ansible.builtin.file:
+    path: "/srv/{{ item.0.key }}/{{ item.1 }}"
+    state: directory
+    owner: deploy
+    group: "{{ item.0.value.run_as if item.0.value.run_as != 'root' else 'deploy' }}"
+    mode: "0755"
+  loop: "{{ apps | dict2items | rejectattr('value.kind', 'equalto', 'quadlet') | product(active_envs) | list }}"
+  loop_control:
+    label: "{{ item.0.key }}/{{ item.1 }}"
+
+- name: Release directories (one per deployment) for the JAR and PHP applications
+  ansible.builtin.file:
+    path: "/srv/{{ item.0.key }}/{{ item.1 }}/releases"
+    state: directory
+    owner: deploy
+    group: "{{ item.0.value.run_as }}"
+    mode: "0755"
+  loop: "{{ apps | dict2items | selectattr('value.kind', 'in', ['jar', 'php']) | product(active_envs) | list }}"
+  loop_control:
+    label: "{{ item.0.key }}/{{ item.1 }}"
+
+- name: "The deploy user may restart the application units, and nothing else"
+  ansible.builtin.template:
+    src: sudoers-deploy.j2
+    dest: /etc/sudoers.d/deploy-applications
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s

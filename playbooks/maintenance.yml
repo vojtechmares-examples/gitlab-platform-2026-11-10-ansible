@@ -1,0 +1,45 @@
+---
+# Maintenance: package repositories, common packages, SELinux, time sync, and (with update_all=true) all pending
+# updates including the kernel, with a reboot when the host says one is needed.
+#   ansible-playbook playbooks/maintenance.yml --limit staging -e update_all=true
+- name: Maintenance tasks
+  hosts: deploy_servers
+  become: true
+  roles:
+    - common
+  tasks:
+    - name: Install all pending updates (includes the kernel)
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+        update_cache: true
+      when: update_all | default(false) | bool
+      register: dnf_update
+      tags: [updates]
+
+    - name: Does the host need a reboot (new kernel or core libraries)?
+      ansible.builtin.command: needs-restarting -r
+      register: needs_restarting
+      changed_when: false
+      failed_when: needs_restarting.rc not in [0, 1]
+      when: update_all | default(false) | bool
+      tags: [updates]
+
+    - name: Reboot and wait for the host to come back
+      ansible.builtin.reboot:
+        reboot_timeout: 600
+      when:
+        - update_all | default(false) | bool
+        - needs_restarting.rc == 1
+      tags: [updates]
+
+    - name: Report the running kernel
+      ansible.builtin.command: uname -r
+      register: kernel
+      changed_when: false
+      tags: [updates]
+
+    - name: Show it
+      ansible.builtin.debug:
+        msg: "running kernel {{ kernel.stdout }}"
+      tags: [updates]

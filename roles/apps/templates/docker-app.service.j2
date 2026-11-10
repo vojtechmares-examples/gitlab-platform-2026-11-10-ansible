@@ -1,0 +1,22 @@
+# Managed by Ansible: roles/apps. The pipeline pulls the image and writes IMAGE=... to image.env, then restarts this unit.
+[Unit]
+Description={{ unit }} (container)
+After=docker.service network-online.target
+Requires=docker.service
+ConditionPathExists=/srv/{{ app_name }}/{{ env_name }}/image.env
+
+[Service]
+EnvironmentFile=/srv/{{ app_name }}/{{ env_name }}/image.env
+ExecStartPre=-/usr/bin/docker rm -f {{ unit }}
+ExecStart=/usr/bin/docker run --rm --name {{ unit }} \
+  --publish 127.0.0.1:{{ port }}:{{ app.container_port }} \
+  --add-host host.docker.internal:host-gateway \
+  --env-file /etc/examples/{{ unit }}.env \
+  ${IMAGE}
+ExecStop=/usr/bin/docker stop --time 20 {{ unit }}
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target

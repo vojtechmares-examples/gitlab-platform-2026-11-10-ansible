@@ -1,0 +1,24 @@
+# Managed by Ansible: roles/apps. The pipeline uploads releases/<pipeline id>/app.jar, switches the "current"
+# symlink and restarts this unit.
+[Unit]
+Description={{ unit }} (Spring Boot)
+After=network-online.target postgresql.service
+Wants=postgresql.service
+ConditionPathExists=/srv/{{ app_name }}/{{ env_name }}/current/app.jar
+
+[Service]
+User={{ app.run_as }}
+Group={{ app.run_as }}
+EnvironmentFile=/etc/examples/{{ unit }}.env
+WorkingDirectory=/srv/{{ app_name }}/{{ env_name }}/current
+ExecStart=/usr/bin/java -XX:MaxRAMPercentage=40 -jar /srv/{{ app_name }}/{{ env_name }}/current/app.jar
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=180
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

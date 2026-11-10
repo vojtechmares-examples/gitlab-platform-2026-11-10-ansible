@@ -1,0 +1,15 @@
+# Managed by Ansible: roles/apps. One Apache instance per environment.
+[Unit]
+Description=Apache for {{ unit }}
+After=network-online.target
+
+[Service]
+Type=notify
+ExecStart=/usr/sbin/httpd -f /etc/examples/{{ unit }}-httpd.conf -DFOREGROUND
+ExecReload=/usr/sbin/httpd -f /etc/examples/{{ unit }}-httpd.conf -k graceful
+TimeoutStopSec=30
+PrivateTmp=true
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
