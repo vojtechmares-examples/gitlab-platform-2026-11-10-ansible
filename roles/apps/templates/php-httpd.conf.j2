@@ -8,6 +8,8 @@ ServerSignature Off
 
 LoadModule mpm_prefork_module modules/mod_mpm_prefork.so
 LoadModule unixd_module modules/mod_unixd.so
+# tells systemd when Apache is ready (Type=notify in the unit)
+LoadModule systemd_module modules/mod_systemd.so
 LoadModule authz_core_module modules/mod_authz_core.so
 LoadModule mime_module modules/mod_mime.so
 LoadModule dir_module modules/mod_dir.so
