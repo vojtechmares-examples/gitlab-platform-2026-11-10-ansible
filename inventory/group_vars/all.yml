@@ -86,3 +86,11 @@ apps:
     run_as: svc-php
     ports: { staging: 5141, production: 5142 }
     database: false
+  # A project created from examples/templates/dotnet-api-template and onboarded as its README describes (no database,
+  # environment variables from roles/apps/templates/env/default.j2)
+  hello-api:
+    kind: docker
+    run_as: root
+    ports: { staging: 5151, production: 5152 }
+    container_port: 8080
+    database: false
