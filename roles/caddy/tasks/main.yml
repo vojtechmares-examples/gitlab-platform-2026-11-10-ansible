@@ -10,6 +10,15 @@
     name: caddy
     state: present
 
+# The Caddy package runs Caddy confined as httpd_t, which may read httpd_sys_content_t but not the var_t that /srv has
+# by default. Without this, file_server cannot read the maintenance page and the visitor gets an empty 502.
+- name: SELinux - the maintenance page is web content
+  community.general.sefcontext:
+    target: "/srv/caddy(/.*)?"
+    setype: httpd_sys_content_t
+    state: present
+  register: caddy_fcontext
+
 - name: Directory of the maintenance page
   ansible.builtin.file:
     path: /srv/caddy/maintenance
@@ -17,6 +26,7 @@
     owner: root
     group: root
     mode: "0755"
+    setype: httpd_sys_content_t
 
 - name: Maintenance page (static HTML, shown while an upstream is down)
   ansible.builtin.template:
@@ -25,6 +35,10 @@
     owner: root
     group: root
     mode: "0644"
+
+- name: Apply the file contexts to the maintenance page
+  ansible.builtin.command: restorecon -R /srv/caddy
+  when: caddy_fcontext is changed
 
 - name: Caddyfile (automatic HTTPS for every application and environment)
   ansible.builtin.template:
