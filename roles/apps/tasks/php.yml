@@ -49,6 +49,8 @@
   ansible.builtin.systemd_service:
     name: "{{ unit }}"
     enabled: true
+  # In check mode a new unit file is only pretended to be written, so systemd does not know the unit yet
+  when: not (ansible_check_mode and unit_changed is changed)
 
 - name: "{{ unit }}: restart a running instance when its configuration changed (a stopped one is left to the pipeline)"
   ansible.builtin.shell: "systemctl is-active --quiet {{ unit }} && systemctl restart {{ unit }} || true"
