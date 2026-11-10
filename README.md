@@ -37,6 +37,25 @@ that for `etc_t` and `var_lib_t` but not for `var_t`, which is what `/srv` is la
 | `java-container` | systemd unit running `docker run` | 5131 / 5132 |
 | `php-apache` | Apache (mod_php) instance per environment | 5141 / 5142 |
 
+## Adding an application
+
+Projects created from the `examples/templates` projects (or any container that listens on 8080) are onboarded with an
+entry in `inventory/group_vars/all.yml`:
+
+```yaml
+apps:
+  orders-api:                 # = the GitLab project's name
+    kind: docker
+    run_as: root
+    ports: { staging: 5151, production: 5152 }
+    container_port: 8080
+    database: false
+```
+
+The pipeline then creates the unit `orders-api-<env>`, the directories and the Caddy sites
+`orders-api-<env>.examples.maresdemo.com` (a certificate is requested automatically). A file
+`roles/apps/templates/env/<app>.j2` adds environment variables; without one `env/default.j2` is used.
+
 ## Pipeline
 
 `syntax` (every pipeline) → `dry-run:staging` (`--check --diff`) → `deploy:staging` → `deploy:production` (manual,

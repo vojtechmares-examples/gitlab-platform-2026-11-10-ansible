@@ -1,0 +1,2 @@
+ASPNETCORE_URLS=http://+:{{ app.container_port | default(8080) }}
+ASPNETCORE_ENVIRONMENT={{ env_name | capitalize }}
