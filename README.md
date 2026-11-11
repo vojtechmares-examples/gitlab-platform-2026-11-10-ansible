@@ -65,16 +65,29 @@ schedule with the variable `UPDATE_ALL=true`.
 Staging and production are the same machine here, so `--limit staging` / `--limit production` select which
 environment's resources (databases, units, directories) are configured. The platform tasks are identical and idempotent.
 
-## Variables
+## CI configuration
 
 ```bash
 export ANSIBLE_SSH_KEY_FILE=...   DEPLOY_PUBLIC_KEY_FILE=...   SECRETS_FILE=...
 scripts/set-ci-variables.sh
 ```
 
-`ANSIBLE_SSH_PRIVATE_KEY` is a protected *File* variable; the `DB_PASSWORD_<APP>` variables exist once per environment
-scope, so a job in the environment `staging` gets the staging password. `DEPLOY_HOST`, `DEPLOY_SSH_PORT` and `SSH_KNOWN_HOSTS`
-come from the instance.
+The script (needs `glab`, safe to run again) sets the variables of this project below. Passwords that are missing from `SECRETS_FILE` are generated there, outside the repository. Variables that start with `CI_` are predefined by GitLab.
+
+| Variable | Set on | Type | Used for |
+|----------|--------|------|----------|
+| `ANSIBLE_SSH_PRIVATE_KEY` | this project | File, **protected** | Private key of the `ansible` account (SSH login with sudo); the script reads it from `ANSIBLE_SSH_KEY_FILE` |
+| `DEPLOY_PUBLIC_KEY` | this project | Variable | Public key of the `deploy` user, authorised for the rootless Podman account; the script reads it from `DEPLOY_PUBLIC_KEY_FILE` |
+| `DB_PASSWORD_<APP>`: `DB_PASSWORD_DOTNET_API`, `DB_PASSWORD_JAVA_SYSTEMD`, `DB_PASSWORD_JAVA_CONTAINER` | this project, **once per environment scope** (`staging`, `production`) | Variable, **masked**, **protected** | Password of the PostgreSQL role of the application, and of the application's configuration file `/etc/examples/<app>-<env>.env`. `<APP>` is the project name in upper case with `-` replaced by `_` |
+| `EXAMPLES_DOMAIN` | this project | Variable | Parent domain of the applications; the script sets `examples.maresdemo.com`, which is also the default in `inventory/group_vars/all.yml` |
+| `DEPLOY_HOST` | group `examples` | Variable | Address of the deploy server (`inventory/hosts.yml`) |
+| `DEPLOY_SSH_PORT` | group `examples` | Variable | SSH port of the deploy server (`6022`) |
+| `SSH_KNOWN_HOSTS` | group `examples` | Variable | Host keys of the deploy server |
+| `LETSENCRYPT_STAGING` | optional | Variable | `"false"` in `.gitlab-ci.yml`; `true` points Caddy at the Let's Encrypt staging CA (no rate limits, certificates that browsers do not trust) |
+| `UPDATE_ALL` | optional, in a pipeline schedule | Variable | `true` lets a scheduled pipeline run `maintenance:updates` |
+
+The group variables are inherited by every project in the `examples` group. The password variables exist once per environment scope, so a job in the environment `staging` gets the staging password; a **protected** variable is passed only to pipelines on protected branches and tags (`main`), which is where the jobs that connect to the server run.
+An application that is added with `database: true` needs a `DB_PASSWORD_<APP>` for each environment, and its name in `APPS` of `scripts/set-ci-variables.sh`. Only the pipeline of `dotnet-api` needs the same value itself, as its variable `DB_PASSWORD` (its migration job).
 
 ## Run it from a laptop
 
